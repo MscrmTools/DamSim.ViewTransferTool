@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 // l'ensemble d'attributs suivant. Changez les valeurs de ces attributs pour modifier les informations
 // associées à un assembly.
 [assembly: AssemblyTitle("View Transfer Tool")]
-[assembly: AssemblyDescription("Enables you to transfer entity views across multiple environments")]
+[assembly: AssemblyDescription("Enables you to transfer views across multiple environments")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("DamSim")]
 [assembly: AssemblyProduct("DamSim.ViewTransferTool")]
@@ -31,5 +31,5 @@ using System.Runtime.InteropServices;
 // Vous pouvez spécifier toutes les valeurs ou indiquer les numéros de build et de révision par défaut
 // en utilisant '*', comme indiqué ci-dessous :
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("1.2016.5.27")]
-[assembly: AssemblyFileVersion("1.2016.5.27")]
+[assembly: AssemblyVersion("1.2016.6.1")]
+[assembly: AssemblyFileVersion("1.2016.6.1")]
