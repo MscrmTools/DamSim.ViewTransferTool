@@ -108,7 +108,7 @@ namespace DamSim.ViewTransferTool.AppCode
                     GrantAccessRequest grantRequest = new GrantAccessRequest()
                     {
                         Target = record.ToEntityReference(),
-                        PrincipalAccess = new PrincipalAccess()
+                        PrincipalAccess = new PrincipalAccess
                         {
                             Principal = new EntityReference("systemuser", targetCurrentUserId),
                             AccessMask = AccessRights.WriteAccess | AccessRights.ReadAccess
@@ -218,6 +218,9 @@ namespace DamSim.ViewTransferTool.AppCode
                     record.Attributes.Remove(attribute.LogicalName);
                 }
             }
+
+            record.Attributes.Remove("statecode");
+            record.Attributes.Remove("statuscode");
         }
     }
 }
