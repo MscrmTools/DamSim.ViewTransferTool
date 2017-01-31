@@ -18,6 +18,13 @@ using XrmToolBox.Extensibility.Interfaces;
 
 namespace DamSim.ViewTransferTool
 {
+    public enum TransferType
+    {
+        Same,
+        OnlineToOnPremise,
+        OnPremiseToOnline
+    }
+
     public partial class ViewTransferTool : UserControl, IXrmToolBoxPluginControl, IGitHubPlugin, IHelpPlugin, IStatusBarMessenger
     {
         #region Variables
@@ -43,6 +50,10 @@ namespace DamSim.ViewTransferTool
         /// Dynamics CRM 2011 target organization service
         /// </summary>
         private IOrganizationService targetService;
+
+        private ConnectionDetail sourceDetail;
+
+        private ConnectionDetail targetDetail;
 
         #endregion Variables
 
@@ -108,11 +119,13 @@ namespace DamSim.ViewTransferTool
             if (actionName == "TargetOrganization")
             {
                 targetService = newService;
+                targetDetail = connectionDetail;
                 SetConnectionLabel(connectionDetail, "Target");
             }
             else
             {
                 service = newService;
+                sourceDetail = connectionDetail;
                 SetConnectionLabel(connectionDetail, "Source");
             }
         }
@@ -465,8 +478,18 @@ namespace DamSim.ViewTransferTool
 
                     try
                     {
+                        TransferType type = TransferType.Same;
+                        if (sourceDetail.UseOnline && !targetDetail.UseOnline)
+                        {
+                            type = TransferType.OnlineToOnPremise;
+                        }
+                        else if (!sourceDetail.UseOnline && targetDetail.UseOnline)
+                        {
+                            type = TransferType.OnPremiseToOnline;
+                        }
+
                         var view = new AppCode.View(viewEntity, service, targetService);
-                        view.Transfer();
+                        view.Transfer(type, this);
                     }
                     catch (FaultException<OrganizationServiceFault> error)
                     {

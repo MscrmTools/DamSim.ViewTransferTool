@@ -6,7 +6,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Windows.Forms;
 using System.Xml.Linq;
+using DamSim.ViewTransferTool.Forms;
 
 namespace DamSim.ViewTransferTool.AppCode
 {
@@ -49,10 +51,10 @@ namespace DamSim.ViewTransferTool.AppCode
             }
         }
 
-        public void Transfer()
+        public void Transfer(TransferType type, UserControl ctrl)
         {
             TransformObjectTypeCode();
-            TransformOwner();
+            TransformOwner(type, ctrl);
             DoTransfer();
         }
 
@@ -126,7 +128,7 @@ namespace DamSim.ViewTransferTool.AppCode
             }
         }
 
-        private void TransformOwner()
+        private void TransformOwner(TransferType type, UserControl ctrl)
         {
             if (record.LogicalName == "userquery")
             {
@@ -136,23 +138,38 @@ namespace DamSim.ViewTransferTool.AppCode
                 
                 if (sourceOwnerRef.LogicalName == "systemuser")
                 {
-                    var sourceUser = sourceService.Retrieve("systemuser", sourceOwnerRef.Id, new ColumnSet("domainname"));
+                    var sourceUser = sourceService.Retrieve("systemuser", sourceOwnerRef.Id, new ColumnSet("domainname","fullname"));
                     name = sourceUser.GetAttributeValue<string>("domainname");
+                    var fullname = sourceUser.GetAttributeValue<string>("fullname");
 
-                    // Let's find the user based on systemuserid or domainname
-                    var targetUser = targetService.RetrieveMultiple(new QueryExpression("systemuser")
+                    if (type != TransferType.Same)
                     {
-                        Criteria = new FilterExpression(LogicalOperator.Or)
+                        var cupDialog = new CrmUserPickerForm(targetService, record.GetAttributeValue<string>("name"), fullname, name);
+                        if (cupDialog.ShowDialog(ctrl) != DialogResult.OK)
                         {
-                            Conditions =
-                                    {
-                                        new ConditionExpression("domainname", ConditionOperator.Equal, name ?? "dummyValueNotExpectedAsDomainNameToAvoidSystemAccount"),
-                                        new ConditionExpression("systemuserid", ConditionOperator.Equal, sourceOwnerRef.Id),
-                                    }
+                            throw new Exception("It is mandatory to select a target user");
                         }
-                    }).Entities.FirstOrDefault();
 
-                    targetReference = targetUser?.ToEntityReference();
+                        targetReference = cupDialog.SelectedUser.ToEntityReference();
+                    }
+                    else
+                    {
+                        // Let's find the user based on systemuserid or domainname
+                        var targetUser = targetService.RetrieveMultiple(new QueryExpression("systemuser")
+                        {
+                            Criteria = new FilterExpression(LogicalOperator.Or)
+                            {
+                                Conditions =
+                                {
+                                    new ConditionExpression("domainname", ConditionOperator.Equal,
+                                        name ?? "dummyValueNotExpectedAsDomainNameToAvoidSystemAccount"),
+                                    new ConditionExpression("systemuserid", ConditionOperator.Equal, sourceOwnerRef.Id),
+                                }
+                            }
+                        }).Entities.FirstOrDefault();
+
+                        targetReference = targetUser?.ToEntityReference();
+                    }
                 }
                 else
                 {
