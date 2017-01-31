@@ -97,7 +97,7 @@ namespace DamSim.ViewTransferTool.AppCode
                 CleanEntity(true);
 
                 var owner = record.GetAttributeValue<EntityReference>("ownerid");
-                if (owner != null && owner.LogicalName == "team" || owner.Id != targetCurrentUserId)
+                if (owner != null && (owner.LogicalName == "team" || owner.Id != targetCurrentUserId))
                 {
                     // Need to create the view for the current user
                     record.Attributes.Remove("ownerid");
