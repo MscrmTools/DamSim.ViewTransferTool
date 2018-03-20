@@ -6,6 +6,7 @@ using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Metadata;
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
@@ -25,7 +26,7 @@ namespace DamSim.ViewTransferTool
         OnPremiseToOnline
     }
 
-    public partial class ViewTransferTool : UserControl, IXrmToolBoxPluginControl, IGitHubPlugin, IHelpPlugin, IStatusBarMessenger
+    public partial class ViewTransferTool : MultipleConnectionsPluginControlBase, IGitHubPlugin, IHelpPlugin, IStatusBarMessenger
     {
         #region Variables
 
@@ -64,59 +65,19 @@ namespace DamSim.ViewTransferTool
 
         #region XrmToolbox
 
-        public event EventHandler OnCloseTool;
-        public event EventHandler OnRequestConnection;
         public event EventHandler<StatusBarMessageEventArgs> SendMessageToStatusBar;
 
-        public Image PluginLogo
-        {
-            get { return null; }
-        }
+        public string HelpUrl => "https://github.com/MscrmTools/DamSim.ViewTransferTool/wiki";
 
-        public IOrganizationService Service
-        {
-            get { throw new NotImplementedException(); }
-        }
+        public string RepositoryName => "DamSim.ViewTransferTool";
 
-        public string HelpUrl
-        {
-            get
-            {
-                return "https://github.com/MscrmTools/DamSim.ViewTransferTool/wiki";
-            }
-        }
+        public string UserName => "MscrmTools";
 
-        public string RepositoryName
+        public override void UpdateConnection(IOrganizationService newService, ConnectionDetail connectionDetail, string actionName = "", object parameter = null)
         {
-            get
-            {
-                return "DamSim.ViewTransferTool";
-            }
-        }
+            base.UpdateConnection(newService, connectionDetail, actionName, parameter);
 
-        public string UserName
-        {
-            get
-            {
-                return "MscrmTools";
-            }
-        }
-
-        public void ClosingPlugin(PluginCloseInfo info)
-        {
-            if (info.FormReason != CloseReason.None ||
-                info.ToolBoxReason == ToolBoxCloseReason.CloseAll ||
-                info.ToolBoxReason == ToolBoxCloseReason.CloseAllExceptActive)
-            {
-                return;
-            }
-
-            info.Cancel = MessageBox.Show(@"Are you sure you want to close this tab?", @"Question", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes;
-        }
-
-        public void UpdateConnection(IOrganizationService newService, ConnectionDetail connectionDetail, string actionName = "", object parameter = null)
-        {
-            if (actionName == "TargetOrganization")
+            if (actionName == "AdditionalOrganization")
             {
                 targetService = newService;
                 targetDetail = connectionDetail;
@@ -130,19 +91,8 @@ namespace DamSim.ViewTransferTool
             }
         }
 
-        public string GetCompany()
+        protected override void ConnectionDetailsUpdated(NotifyCollectionChangedEventArgs e)
         {
-            return GetType().GetCompany();
-        }
-
-        public string GetMyType()
-        {
-            return GetType().FullName;
-        }
-
-        public string GetVersion()
-        {
-            return GetType().Assembly.GetName().Version.ToString();
         }
 
         #endregion XrmToolbox
@@ -151,44 +101,19 @@ namespace DamSim.ViewTransferTool
 
         private void llSelectTarget_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
         {
-            if (OnRequestConnection != null)
-            {
-                var args = new RequestConnectionEventArgs { ActionName = "TargetOrganization", Control = this };
-                OnRequestConnection(this, args);
-            }
+            AddAdditionalOrganization();
         }
 
         private void tsbCloseThisTab_Click(object sender, EventArgs e)
         {
-            if (OnCloseTool != null)
-            {
-                const string message = "Are you sure to exit?";
-                if (MessageBox.Show(message, "Question", MessageBoxButtons.YesNo, MessageBoxIcon.Question) ==
-                    DialogResult.Yes)
-                    OnCloseTool(this, null);
-            }
+            CloseTool();
         }
 
         private void tsbLoadEntities_Click(object sender, EventArgs e)
         {
-            if (service == null)
-            {
-                if (OnRequestConnection != null)
-                {
-                    var args = new RequestConnectionEventArgs
-                    {
-                        ActionName = "Load",
-                        Control = this
-                    };
-                    OnRequestConnection(this, args);
-                }
-            }
-            else
-            {
-                LoadEntities();
-            }
+            ExecuteMethod(LoadEntities);
         }
-        
+
         private void tsbTransferViews_Click(object sender, EventArgs e)
         {
             Transfer();
@@ -214,7 +139,6 @@ namespace DamSim.ViewTransferTool
             if (lvSourceViews.SelectedItems.Count == 0) { return; }
             if (lvSourceViews.SelectedItems.Count > 1) { return; }
 
-
             lvSourceViews.SelectedIndexChanged -= lvSourceViews_SelectedIndexChanged;
 
             ManageWorkingState(true);
@@ -234,14 +158,12 @@ namespace DamSim.ViewTransferTool
                 XmlDocument layoutDoc = new XmlDocument();
                 layoutDoc.LoadXml(layoutXml);
 
-
                 ListViewItem item = new ListViewItem();
                 List<ColumnHeader> headers = new List<ColumnHeader>();
 
                 foreach (XmlNode columnNode in layoutDoc.SelectNodes("grid/row/cell"))
                 {
                     int columnWidth = columnNode.Attributes["width"] == null ? 0 : int.Parse(columnNode.Attributes["width"].Value);
-
 
                     ColumnHeader header = new ColumnHeader();
                     header.Width = columnWidth;
@@ -259,7 +181,8 @@ namespace DamSim.ViewTransferTool
 
                 evt.Result = new Tuple<ListViewItem, List<ColumnHeader>>(item, headers);
             };
-            bwDisplayView.RunWorkerCompleted += (bw, evt) => {
+            bwDisplayView.RunWorkerCompleted += (bw, evt) =>
+            {
                 lvSourceViews.SelectedIndexChanged += lvSourceViews_SelectedIndexChanged;
                 ManageWorkingState(false);
 
@@ -333,7 +256,8 @@ namespace DamSim.ViewTransferTool
             informationPanel = InformationPanel.GetInformationPanel(this, "Loading entities...", 340, 120);
 
             var bwFillEntities = new BackgroundWorker();
-            bwFillEntities.DoWork += (sender, e) => {
+            bwFillEntities.DoWork += (sender, e) =>
+            {
                 _savedQueryMetadata = MetadataHelper.RetrieveEntity("savedquery", service);
                 entitiesCache = MetadataHelper.RetrieveEntities(service);
 
@@ -348,10 +272,11 @@ namespace DamSim.ViewTransferTool
 
                 e.Result = list;
             };
-            bwFillEntities.RunWorkerCompleted += (sender,e)=> {
+            bwFillEntities.RunWorkerCompleted += (sender, e) =>
+            {
                 if (e.Error != null)
                 {
-                   MessageBox.Show(ParentForm, e.Error.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(ParentForm, e.Error.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
                 else
                 {
@@ -363,12 +288,12 @@ namespace DamSim.ViewTransferTool
             };
             bwFillEntities.RunWorkerAsync();
         }
-      
+
         private void PopulateSourceViews()
         {
             if (lvEntities.SelectedItems.Count == 0) { return; }
 
-            var emd= (EntityMetadata)lvEntities.SelectedItems[0].Tag;
+            var emd = (EntityMetadata)lvEntities.SelectedItems[0].Tag;
 
             // Reinit other controls
             lvSourceViews.Items.Clear();
@@ -377,7 +302,8 @@ namespace DamSim.ViewTransferTool
 
             // Launch treatment
             var bwFillViews = new BackgroundWorker();
-            bwFillViews.DoWork += (sender, e) => {
+            bwFillViews.DoWork += (sender, e) =>
+            {
                 string entityLogicalName = e.Argument.ToString();
 
                 // Retrieve views
@@ -420,7 +346,8 @@ namespace DamSim.ViewTransferTool
 
                 e.Result = sourceViewsList;
             };
-            bwFillViews.RunWorkerCompleted += (sender, e) => {
+            bwFillViews.RunWorkerCompleted += (sender, e) =>
+            {
                 if (e.Error != null)
                 {
                     MessageBox.Show(this, "An error occured: " + e.Error.Message, "Error", MessageBoxButtons.OK,
@@ -444,7 +371,7 @@ namespace DamSim.ViewTransferTool
             };
             bwFillViews.RunWorkerAsync(emd.LogicalName);
         }
-     
+
         private void Transfer()
         {
             if (service == null || targetService == null)
@@ -493,7 +420,7 @@ namespace DamSim.ViewTransferTool
                     }
                     catch (FaultException<OrganizationServiceFault> error)
                     {
-                        if(error.HResult == -2146233087)
+                        if (error.HResult == -2146233087)
                         {
                             errors.Add(new Tuple<string, string>(name, "The view you tried to transfert already exists but you don't have read access to it. Get access to this view on the target organization to update it"));
                         }
@@ -506,7 +433,8 @@ namespace DamSim.ViewTransferTool
 
                 e.Result = errors;
             };
-            bwTransferViews.RunWorkerCompleted += (sender, e) => {
+            bwTransferViews.RunWorkerCompleted += (sender, e) =>
+            {
                 Controls.Remove(informationPanel);
                 informationPanel.Dispose();
                 SendMessageToStatusBar(this, new StatusBarMessageEventArgs(""));
@@ -520,16 +448,17 @@ namespace DamSim.ViewTransferTool
                     errorDialog.ShowDialog(ParentForm);
                 }
             };
-            bwTransferViews.ProgressChanged += (sender, e) => {
+            bwTransferViews.ProgressChanged += (sender, e) =>
+            {
                 InformationPanel.ChangeInformationPanelMessage(informationPanel, e.UserState.ToString());
                 SendMessageToStatusBar(this, new StatusBarMessageEventArgs(e.UserState.ToString()));
             };
-            bwTransferViews.RunWorkerAsync(lvSourceViews.SelectedItems.Cast<ListViewItem>().Select(v=>(Entity)v.Tag).ToList());
+            bwTransferViews.RunWorkerAsync(lvSourceViews.SelectedItems.Cast<ListViewItem>().Select(v => (Entity)v.Tag).ToList());
         }
-     
+
         private void Publish(bool all)
         {
-            if(lvEntities.SelectedItems.Count == 0) { return; }
+            if (lvEntities.SelectedItems.Count == 0) { return; }
 
             ManageWorkingState(true);
 
@@ -537,8 +466,8 @@ namespace DamSim.ViewTransferTool
             informationPanel = InformationPanel.GetInformationPanel(this, message, 340, 120);
 
             var bwPublish = new BackgroundWorker();
-            bwPublish.DoWork += (sender, e) => {
-
+            bwPublish.DoWork += (sender, e) =>
+            {
                 if (string.IsNullOrEmpty(e.Argument.ToString()))
                 {
                     var pubRequest = new PublishAllXmlRequest();
@@ -558,7 +487,8 @@ namespace DamSim.ViewTransferTool
                     targetService.Execute(pubRequest);
                 }
             };
-            bwPublish.RunWorkerCompleted += (sender, e) => {
+            bwPublish.RunWorkerCompleted += (sender, e) =>
+            {
                 ManageWorkingState(false);
                 Controls.Remove(informationPanel);
                 informationPanel.Dispose();
@@ -627,6 +557,7 @@ namespace DamSim.ViewTransferTool
                         item.ImageIndex = 4;
                     }
                     break;
+
                 default:
                     {
                         item.SubItems.Add(view["querytype"].ToString());
