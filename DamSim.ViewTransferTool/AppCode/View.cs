@@ -59,6 +59,7 @@ namespace DamSim.ViewTransferTool.AppCode
             GetState();
             DoTransfer();
             ApplyState();
+            MoveTranslations();
         }
 
         private void ApplyState()
@@ -168,6 +169,24 @@ namespace DamSim.ViewTransferTool.AppCode
         private void GetState()
         {
             stateCode = record.GetAttributeValue<OptionSetValue>("statecode").Value;
+        }
+
+        private void MoveTranslations()
+        {
+            var response = (RetrieveLocLabelsResponse)sourceService.Execute(new RetrieveLocLabelsRequest
+            {
+                AttributeName = "name",
+                EntityMoniker = record.ToEntityReference()
+            });
+
+            if (response.Label.LocalizedLabels.Count == 1) return;
+
+            targetService.Execute(new SetLocLabelsRequest
+            {
+                AttributeName = "name",
+                EntityMoniker = record.ToEntityReference(),
+                Labels = response.Label.LocalizedLabels.ToArray()
+            });
         }
 
         private void TransformObjectTypeCode()
