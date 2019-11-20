@@ -1,4 +1,5 @@
-﻿using Microsoft.Crm.Sdk.Messages;
+﻿using DamSim.ViewTransferTool.Forms;
+using Microsoft.Crm.Sdk.Messages;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Metadata;
 using Microsoft.Xrm.Sdk.Query;
@@ -8,19 +9,19 @@ using System.Globalization;
 using System.Linq;
 using System.Windows.Forms;
 using System.Xml.Linq;
-using DamSim.ViewTransferTool.Forms;
 
 namespace DamSim.ViewTransferTool.AppCode
 {
     public class View
     {
         private static List<EntityMetadata> sourceEntitiesMetadata;
-        private static List<EntityMetadata> targetEntitiesMetadata;
         private static Guid targetCurrentUserId;
-        private readonly IOrganizationService sourceService;
-        private readonly IOrganizationService targetService;
+        private static List<EntityMetadata> targetEntitiesMetadata;
         private readonly Entity originalRecord;
         private readonly Entity record;
+        private readonly IOrganizationService sourceService;
+        private readonly IOrganizationService targetService;
+        private int stateCode;
 
         public View(Entity record, IOrganizationService sourceService, IOrganizationService targetService)
         {
@@ -34,7 +35,7 @@ namespace DamSim.ViewTransferTool.AppCode
                 targetEntitiesMetadata = new List<EntityMetadata>();
             }
 
-            if(targetCurrentUserId == Guid.Empty)
+            if (targetCurrentUserId == Guid.Empty)
             {
                 targetCurrentUserId = ((WhoAmIResponse)targetService.Execute(new WhoAmIRequest())).UserId;
             }
@@ -55,22 +56,58 @@ namespace DamSim.ViewTransferTool.AppCode
         {
             TransformObjectTypeCode();
             TransformOwner(type, ctrl);
+            GetState();
             DoTransfer();
+            ApplyState();
         }
 
-        private void TransformObjectTypeCode()
+        private void ApplyState()
         {
-            var targetEntityMetadata = targetEntitiesMetadata.FirstOrDefault(emd => emd.LogicalName == record.GetAttributeValue<string>("returnedtypecode"));
-            if (targetEntityMetadata == null)
+            if (stateCode == 1)
             {
-                targetEntityMetadata = MetadataHelper.GetEntityMetadata(record.GetAttributeValue<string>("returnedtypecode"), EntityFilters.Entity, targetService);
+                targetService.Update(new Entity(record.LogicalName)
+                {
+                    Id = record.Id,
+                    Attributes =
+                    {
+                        {"statecode", new OptionSetValue(1) },
+                        {"statuscode", new OptionSetValue(-1) }
+                    }
+                });
+            }
+        }
+
+        private void CleanEntity(bool create)
+        {
+            var targetEntityMetadata = targetEntitiesMetadata.FirstOrDefault(emd => emd.LogicalName == record.LogicalName);
+            if (targetEntityMetadata == null || targetEntityMetadata.Attributes == null)
+            {
+                targetEntityMetadata = MetadataHelper.GetEntityMetadata(record.LogicalName, EntityFilters.Entity | EntityFilters.Attributes, targetService);
+
+                var existingEmd = targetEntitiesMetadata.FirstOrDefault(emd => emd.LogicalName == record.LogicalName);
+                if (existingEmd != null)
+                {
+                    targetEntitiesMetadata.Remove(existingEmd);
+                }
+
                 targetEntitiesMetadata.Add(targetEntityMetadata);
             }
 
-            XDocument layoutDoc = XDocument.Parse(record.GetAttributeValue<string>("layoutxml"));
-            layoutDoc.Descendants("grid").Single().Attribute("object").Value = targetEntityMetadata.ObjectTypeCode.Value.ToString(CultureInfo.InvariantCulture);
+            foreach (var attribute in targetEntityMetadata.Attributes)
+            {
+                if (create && !attribute.IsValidForCreate.Value && record.Contains(attribute.LogicalName))
+                {
+                    record.Attributes.Remove(attribute.LogicalName);
+                }
 
-            record["layoutxml"] = layoutDoc.ToString();
+                if (!create && !attribute.IsValidForUpdate.Value && record.Contains(attribute.LogicalName))
+                {
+                    record.Attributes.Remove(attribute.LogicalName);
+                }
+            }
+
+            record.Attributes.Remove("statecode");
+            record.Attributes.Remove("statuscode");
         }
 
         private void DoTransfer()
@@ -128,6 +165,26 @@ namespace DamSim.ViewTransferTool.AppCode
             }
         }
 
+        private void GetState()
+        {
+            stateCode = record.GetAttributeValue<OptionSetValue>("statecode").Value;
+        }
+
+        private void TransformObjectTypeCode()
+        {
+            var targetEntityMetadata = targetEntitiesMetadata.FirstOrDefault(emd => emd.LogicalName == record.GetAttributeValue<string>("returnedtypecode"));
+            if (targetEntityMetadata == null)
+            {
+                targetEntityMetadata = MetadataHelper.GetEntityMetadata(record.GetAttributeValue<string>("returnedtypecode"), EntityFilters.Entity, targetService);
+                targetEntitiesMetadata.Add(targetEntityMetadata);
+            }
+
+            XDocument layoutDoc = XDocument.Parse(record.GetAttributeValue<string>("layoutxml"));
+            layoutDoc.Descendants("grid").Single().Attribute("object").Value = targetEntityMetadata.ObjectTypeCode.Value.ToString(CultureInfo.InvariantCulture);
+
+            record["layoutxml"] = layoutDoc.ToString();
+        }
+
         private void TransformOwner(TransferType type, UserControl ctrl)
         {
             if (record.LogicalName == "userquery")
@@ -135,10 +192,10 @@ namespace DamSim.ViewTransferTool.AppCode
                 EntityReference targetReference;
                 string name;
                 var sourceOwnerRef = record.GetAttributeValue<EntityReference>("ownerid");
-                
+
                 if (sourceOwnerRef.LogicalName == "systemuser")
                 {
-                    var sourceUser = sourceService.Retrieve("systemuser", sourceOwnerRef.Id, new ColumnSet("domainname","fullname"));
+                    var sourceUser = sourceService.Retrieve("systemuser", sourceOwnerRef.Id, new ColumnSet("domainname", "fullname"));
                     name = sourceUser.GetAttributeValue<string>("domainname");
                     var fullname = sourceUser.GetAttributeValue<string>("fullname");
 
@@ -190,7 +247,6 @@ namespace DamSim.ViewTransferTool.AppCode
                     }).Entities.FirstOrDefault();
 
                     targetReference = targetTeam?.ToEntityReference();
-
                 }
 
                 if (targetReference != null)
@@ -205,39 +261,6 @@ namespace DamSim.ViewTransferTool.AppCode
                         record.GetAttributeValue<EntityReference>("ownerid").Id));
                 }
             }
-        }
-
-        private void CleanEntity(bool create)
-        {
-            var targetEntityMetadata = targetEntitiesMetadata.FirstOrDefault(emd => emd.LogicalName == record.LogicalName);
-            if (targetEntityMetadata == null || targetEntityMetadata.Attributes == null)
-            {
-                targetEntityMetadata = MetadataHelper.GetEntityMetadata(record.LogicalName, EntityFilters.Entity | EntityFilters.Attributes, targetService);
-
-                var existingEmd = targetEntitiesMetadata.FirstOrDefault(emd => emd.LogicalName == record.LogicalName);
-                if(existingEmd != null)
-                {
-                    targetEntitiesMetadata.Remove(existingEmd);
-                }
-                
-                targetEntitiesMetadata.Add(targetEntityMetadata);
-            }
-
-            foreach (var attribute in targetEntityMetadata.Attributes)
-            {
-                if (create && !attribute.IsValidForCreate.Value && record.Contains(attribute.LogicalName))
-                {
-                    record.Attributes.Remove(attribute.LogicalName);
-                }
-
-                if (!create && !attribute.IsValidForUpdate.Value && record.Contains(attribute.LogicalName))
-                {
-                    record.Attributes.Remove(attribute.LogicalName);
-                }
-            }
-
-            record.Attributes.Remove("statecode");
-            record.Attributes.Remove("statuscode");
         }
     }
 }
