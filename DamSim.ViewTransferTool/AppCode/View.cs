@@ -173,6 +173,8 @@ namespace DamSim.ViewTransferTool.AppCode
 
         private void MoveTranslations()
         {
+            if (record.LogicalName == "userquery") return;
+
             var response = (RetrieveLocLabelsResponse)sourceService.Execute(new RetrieveLocLabelsRequest
             {
                 AttributeName = "name",
